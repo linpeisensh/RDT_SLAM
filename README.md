@@ -7,38 +7,33 @@ This python project is a complete implementation of Stereo PTAM, based on C++ pr
 S-PTAM system overview (from [S-PTAM paper](http://webdiis.unizar.es/~jcivera/papers/pire_etal_ras17.pdf) page 11):  
 ![](imgs/sptam_overview.png)
 
-As stated in the [S-PTAM paper](http://webdiis.unizar.es/~jcivera/papers/pire_etal_ras17.pdf) (page 39), S-PTAM's results on KITTI dataset is comparable to stereo version of [ORB-SLAM2](https://github.com/raulmur/ORB_SLAM2), and better than stereo LSD-SLAM. It's very inspiring, I'm trying to reproduce the results.
+As stated in the [S-PTAM paper](http://webdiis.unizar.es/~jcivera/papers/pire_etal_ras17.pdf) (page 39), S-PTAM's results on KITTI dataset is comparable to stereo version of [ORB-SLAM2](https://github.com/raulmur/ORB_SLAM2), and better than stereo LSD-SLAM. It's very inspiring.
 
 
 ## Features 
 (of this implementation)
+* Semantic Segmentation of Moving Objects
 * Multithreads Tracking, Mapping, and Loop Closing;
 * Covisibility Graph (representing the relation between keyframes, mappoints and measurements);
 * Local Bundle Adjustment and Pose Graph Optimization;
 * Motion Model (used for pose prediction, then for reliable feature matching);
-* Point Clouds and Graph visualization;
 * Data loader for datasets [KITTI Odometry](http://www.cvlibs.net/datasets/kitti/eval_odometry.php) and [EuRoC MAV](http://projects.asl.ethz.ch/datasets/doku.php?id=kmavvisualinertialdatasets);
-* Reasonable speed: ~50ms per frame on EuRoC, and ~70ms per frame on KITTI.
+
 
 ## Requirements
-* Python 3.6+
+* Python 3.6
 * numpy
-* cv2
+* opencv-python, opencv-contrib-python  == 4.1.2.30
 * [g2o](https://github.com/uoip/g2opy) <sub>(python binding of C++ library [g2o](https://github.com/RainerKuemmerle/g2o))</sub> for optimization
-* [pangolin](https://github.com/uoip/pangolin) <sub>(python binding of C++ library [Pangolin](http://github.com/stevenlovegrove/Pangolin))</sub> for visualization
+* apex
+* cocoapi
+* torchvision == 0.2.1
+* torch == 1.2.0
+* maskrcnn_benchmark
 
 ## Usage
-`python sptam.py --dataset kitti --path path/to/your/KITTI_odometry_dataset/sequences/00`  
-or  
-`python sptam.py --dataset euroc --path path/to/your/EuRoC_MAV_dataset/MH_01_easy`
+`python dysptam.py --device cpu/cuda --no-viz --dataset kitti --path path/to/your/KITTI_odometry_dataset/sequences/00`  
 
-## Results
-Visual results (screenshots from my experiment) on KITTI odometry sequence 00:   
-* graph:  
-As shown below, all loops have been closed (loop points are marked in black).   
-![](imgs/pose_graph.png)   
-* point cloud:   
-![](imgs/point_cloud.png)
 
 
 ### TODO:
@@ -58,4 +53,4 @@ Robotics and Autonomous Systems, 2017.
 Proc. of The International Conference on Intelligent Robots and Systems (IROS), Hamburg, Germany, 2015.  
 
 
-If you have interest in the python implementation here, just email me (Hang Qi, qihang@outlook.com);
+This project is based on https://github.com/uoip/stereo_ptam.
