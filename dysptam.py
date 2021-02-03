@@ -1,9 +1,18 @@
 import numpy as np
 import cv2 as cv
 import time
+import traceback
+import g2o
+import argparse
+from threading import Thread
 
 from dynaseg import DynaSeg
 from msptam import SPTAM, stereoCamera
+from components import Camera
+from components import StereoFrame
+from feature import ImageFeature
+from params import ParamsKITTI, ParamsEuroc
+from dataset import KITTIOdometry, EuRoCDataset
 
 from maskrcnn_benchmark.config import cfg
 from demo.predictor import COCODemo
@@ -38,17 +47,6 @@ def save_trajectory(trajectory, filename):
 
 
 if __name__ == '__main__':
-    import g2o
-
-    import argparse
-
-    from threading import Thread
-
-    from components import Camera
-    from components import StereoFrame
-    from feature import ImageFeature
-    from params import ParamsKITTI, ParamsEuroc
-    from dataset import KITTIOdometry, EuRoCDataset
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--no-viz', action='store_true', help='do not visualize')
@@ -90,7 +88,7 @@ if __name__ == '__main__':
     mtx = np.array([[707.0912, 0, 601.8873], [0, 707.0912, 183.1104], [0, 0, 1]])
     dist = np.array([[0] * 4]).reshape(1, 4).astype(np.float32)
 
-    dilation = 5
+    dilation = 2
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2 * dilation + 1, 2 * dilation + 1))
 
 
@@ -144,6 +142,7 @@ if __name__ == '__main__':
         for i in range(n):
             iml = cv.imread(dataset.left[i], cv.IMREAD_UNCHANGED)
             imr = cv.imread(dataset.right[i], cv.IMREAD_UNCHANGED)
+            # original
             featurel = ImageFeature(iml, params)
             featurer = ImageFeature(imr, params)
             timestamp = dataset.timestamps[i]
@@ -157,64 +156,70 @@ if __name__ == '__main__':
 
 
             print('{}. frame'.format(i))
-            frame = StereoFrame(i, g2o.Isometry3d(), featurel, featurer, cam, timestamp=timestamp)
+            try:
+                frame = StereoFrame(i, g2o.Isometry3d(), featurel, featurer, cam, timestamp=timestamp)
 
-            if not sptam0.is_initialized():
-                sptam0.initialize(frame)
-            else:
-                sptam0.track(frame)
+                if not sptam0.is_initialized():
+                    sptam0.initialize(frame)
+                else:
+                    sptam0.track(frame)
 
-            R = frame.pose.orientation().matrix()
-            t = frame.pose.position()
-            cur_tra = list(R[0]) + [t[0]] + list(R[1]) + [t[1]] + list(R[2]) + [t[2]]
-            otrajectory.append((cur_tra))
-            if i % 5 == 0:
-                if i:
+                R = frame.pose.orientation().matrix()
+                t = frame.pose.position()
+                cur_tra = list(R[0]) + [t[0]] + list(R[1]) + [t[1]] + list(R[2]) + [t[2]]
+                otrajectory.append((cur_tra))
+
+                # dyn
+                if i % 5 == 0:
+                    if i:
+                        c = dseg.dyn_seg(frame,iml)
+                    dseg.updata(iml,imr,i,frame)
+                else:
                     c = dseg.dyn_seg(frame,iml)
-                dseg.updata(iml,imr,i,frame)
-            else:
-                c = dseg.dyn_seg(frame,iml)
+
+                featurel = ImageFeature(iml, params)
+                featurer = ImageFeature(imr, params)
+
+                t = Thread(target=featurer.extract)
+                t.start()
+                featurel.extract()
+                t.join()
+
+                if i:
+                    lm = c
+                    rm = c
+                    ofl = np.array(featurel.keypoints)
+                    ofr = np.array(featurer.keypoints)
+                    flm = maskofkp(ofl, lm)
+                    frm = maskofkp(ofr, rm)
+                    featurel.keypoints = list(ofl[flm])
+                    featurer.keypoints = list(ofr[frm])
+                    featurel.descriptors = featurel.descriptors[flm]
+                    featurer.descriptors = featurer.descriptors[frm]
+                    featurel.unmatched = featurel.unmatched[flm]
+                    featurer.unmatched = featurer.unmatched[frm]
+
+                aframe = StereoFrame(i, g2o.Isometry3d(), featurel, featurer, cam, timestamp=timestamp)
+
+                if not sptam1.is_initialized():
+                    sptam1.initialize(aframe)
+                else:
+                    sptam1.track(aframe)
 
 
-            featurel = ImageFeature(iml, params)
-            featurer = ImageFeature(imr, params)
-
-            t = Thread(target=featurer.extract)
-            t.start()
-            featurel.extract()
-            t.join()
+                R = aframe.pose.orientation().matrix()
+                t = aframe.pose.position()
+                cur_tra = list(R[0]) + [t[0]] + list(R[1]) + [t[1]] + list(R[2]) + [t[2]]
+                atrajectory.append((cur_tra))
 
 
-            if i:
-                lm = c
-                rm = c
-                ofl = np.array(featurel.keypoints)
-                ofr = np.array(featurer.keypoints)
-                flm = maskofkp(ofl, lm)
-                frm = maskofkp(ofr, rm)
-                featurel.keypoints = list(ofl[flm])
-                featurer.keypoints = list(ofr[frm])
-                featurel.descriptors = featurel.descriptors[flm]
-                featurer.descriptors = featurer.descriptors[frm]
-                featurel.unmatched = featurel.unmatched[flm]
-                featurer.unmatched = featurer.unmatched[frm]
-
-            frame = StereoFrame(i, g2o.Isometry3d(), featurel, featurer, cam, timestamp=timestamp)
-
-            if not sptam1.is_initialized():
-                sptam1.initialize(frame)
-            else:
-                sptam1.track(frame)
 
 
-            R = frame.pose.orientation().matrix()
-            t = frame.pose.position()
-            cur_tra = list(R[0]) + [t[0]] + list(R[1]) + [t[1]] + list(R[2]) + [t[2]]
-            atrajectory.append((cur_tra))
-
-
-            if visualize:
-                viewer.update()
+                if visualize:
+                    viewer.update()
+            except Exception as e:
+                traceback.print_exc()
+                time.sleep(2)
 
 
         save_trajectory(otrajectory,'o{}.txt'.format(args.path[-2:]))
