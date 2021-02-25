@@ -1,10 +1,11 @@
 import numpy as np
 import cv2 as cv
 from copy import deepcopy as dp
+import os
 
 
 class DynaSeg():
-    def __init__(self, iml, coco_demo, feature_params, disp_path, config, paraml, lk_params, mtx, dist, dilation):
+    def __init__(self, iml, coco_demo, feature_params, disp_path, config, paraml, lk_params, mtx, dist, kernel):
         self.h, self.w = iml.shape[:2]
         self.coco = coco_demo
         self.feature_params = feature_params
@@ -17,7 +18,9 @@ class DynaSeg():
 
         self.mtx = mtx
         self.dist = dist
-        self.kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2 * dilation + 1, 2 * dilation + 1))
+        self.kernel = kernel
+
+        self.potential_moving_labels = set(range(1,5))
 
         self.obj = np.array([])
         self.IOU_thd = 0.0
@@ -26,13 +29,13 @@ class DynaSeg():
         self.a = 0
         self.t = 0
 
-    def updata(self, iml, imr, i, k_frame):
+    def updata(self, iml, imr, i, frame):
         self.old_gray = cv.cvtColor(iml, cv.COLOR_BGR2GRAY)
         self.p = cv.goodFeaturesToTrack(self.old_gray, mask=None, **self.feature_params)
         self.p1 = dp(self.p)
         self.ast = np.ones((self.p.shape[0], 1))
         self.points = self.get_points(i, iml, imr)
-        self.otfm = np.linalg.inv(Rt_to_tran(k_frame.transform_matrix))
+        self.otfm = np.linalg.inv(Rt_to_tran(frame.transform_matrix))
 
     def getRectifyTransform(self):
         left_K = self.config.cam_matrix_left
@@ -58,7 +61,7 @@ class DynaSeg():
     def get_points(self, i, iml, imr):
         iml_, imr_ = preprocess(iml, imr)
         disp = self.stereoMatchSGBM(iml_, imr_)
-        dis = np.load(self.disp_path + str(i).zfill(6) + '.npy')
+        dis = np.load(os.path.join(self.disp_path, str(i).zfill(6) + '.npy'))
         disp[disp == 0] = dis[disp == 0]
         points = cv.reprojectImageTo3D(disp, self.Q)
         return points
@@ -87,7 +90,7 @@ class DynaSeg():
         # calculate optical flow
         p1, st, err = cv.calcOpticalFlowPyrLK(self.old_gray, frame_gray, self.p1, None, **self.lk_params)
         self.ast *= st
-        tfm = Rt_to_tran(np.array(frame.transform_matrix))
+        tfm = Rt_to_tran(frame.transform_matrix)
         tfm = self.otfm.dot(tfm)
         b = cv.Rodrigues(tfm[:3, :3])
         R = b[0]
@@ -125,7 +128,7 @@ class DynaSeg():
         top = self.coco.select_top_predictions(prediction)
         masks = top.get_field("mask").numpy()
 
-        c = np.zeros((self.h, self.w))
+        c = np.ones((self.h, self.w),dtype=np.uint8)
         n = len(masks)
         for i in range(n):
             mask = masks[i].squeeze()
@@ -140,7 +143,8 @@ class DynaSeg():
                     if ge[i]:
                         co += 1
             if ao > 1 and co / ao > 0.5:
-                c[mask_dil.astype(np.bool)] = 255
+                # c[mask_dil.astype(np.bool)] = 0
+                c[mask.astype(np.bool)] = 0
         self.old_gray = frame_gray.copy()
         return c
 
@@ -149,11 +153,14 @@ class DynaSeg():
         prediction = self.coco.compute_prediction(image)
         top = self.coco.select_top_predictions(prediction)
         omasks = top.get_field("mask").numpy()
+        labels = list(map(int,top.get_field("labels")))
+        nl = len(labels)
         masks = []
-        for mask in omasks:
-            mask = mask.squeeze().astype(np.uint8)
-            mask = cv.dilate(mask, self.kernel)
-            masks.append(mask)
+        for i in range(nl):
+            if labels[i] in self.potential_moving_labels:
+                mask = omasks[i].squeeze().astype(np.uint8)
+                mask = cv.dilate(mask, self.kernel)
+                masks.append(mask)
         res = []
         nc = len(self.obj)
         nm = len(masks)
@@ -248,17 +255,15 @@ class DynaSeg():
                     self.obj[ci][2] += 1
                     cnd[ci] = False
 
-        c = np.zeros((self.h, self.w))
+        c = np.ones((self.h, self.w),dtype=np.uint8)
         nobj = len(self.obj)
         res = [True] * nobj
         print('num of objs', nobj)
-        cc = []
         for i in range(nobj):
-            cc.append(list(self.obj[i]))
             if idx - self.obj[i][3] != 0:
                 res[i] = False
             elif self.obj[i][2] / self.obj[i][1] >= self.dyn_thd or self.obj[i][2] >= 5:  #
-                c[self.obj[i][0]] = 255
+                c[self.obj[i][0]] = 0
             elif cnd[i]:
                 self.obj[i][2] = max(0, self.obj[i][2] - 0.5)
         self.obj = np.array(self.obj, dtype=object)
