@@ -2,14 +2,18 @@ import numpy as np
 import cv2 as cv
 from copy import deepcopy as dp
 import os
+from psmnet.submission import PSMNet
 
 
 class DynaSeg():
-    def __init__(self, iml, coco_demo, feature_params, disp_path, config, paraml, lk_params, mtx, dist, kernel):
+    def __init__(self, iml, coco_demo, feature_params, disp_path, config, paraml, lk_params, mtx, dist, kernel, loadmodel):
         self.h, self.w = iml.shape[:2]
         self.coco = coco_demo
         self.feature_params = feature_params
+
         self.disp_path = disp_path
+        self.psmnet = PSMNet(loadmodel)
+
         self.config = config
         self.Q = self.getRectifyTransform()
         self.paraml = paraml
@@ -25,6 +29,8 @@ class DynaSeg():
         self.obj = np.array([])
         self.IOU_thd = 0.0
         self.dyn_thd = 0.6
+
+        self.cverrs = []
 
         self.a = 0
         self.t = 0
@@ -61,7 +67,8 @@ class DynaSeg():
     def get_points(self, i, iml, imr):
         iml_, imr_ = preprocess(iml, imr)
         disp = self.stereoMatchSGBM(iml_, imr_)
-        dis = np.load(os.path.join(self.disp_path, str(i).zfill(6) + '.npy'))
+        # dis = np.load(os.path.join(self.disp_path, str(i).zfill(6) + '.npy'))
+        dis = self.psmnet.main(iml,imr)
         disp[disp == 0] = dis[disp == 0]
         points = cv.reprojectImageTo3D(disp, self.Q)
         return points
@@ -114,6 +121,7 @@ class DynaSeg():
         else:
             cverror = float('inf')
         print(cverror)
+        self.cverrs.append(cverror)
         self.p1 = p1
         ge = norm(error,imgpts)
         return ge, P
@@ -272,6 +280,51 @@ class DynaSeg():
             print('a: {}, d: {}'.format(obj[1],obj[2]))
         self.old_gray = frame_gray.copy()
         return c
+
+class DynaSegt(DynaSeg):
+    def updata(self, iml, imr, i, trans):
+        self.old_gray = cv.cvtColor(iml, cv.COLOR_BGR2GRAY)
+        self.p = cv.goodFeaturesToTrack(self.old_gray, mask=None, **self.feature_params)
+        self.p1 = dp(self.p)
+        self.ast = np.ones((self.p.shape[0], 1))
+        self.points = self.get_points(i, iml, imr)
+        self.otfm = np.linalg.inv(trans)
+
+    def projection(self, trans, frame_gray):
+        # calculate optical flow
+        p1, st, err = cv.calcOpticalFlowPyrLK(self.old_gray, frame_gray, self.p1, None, **self.lk_params)
+        self.ast *= st
+        tfm = trans
+        tfm = self.otfm.dot(tfm)
+        b = cv.Rodrigues(tfm[:3, :3])
+        R = b[0]
+        t = tfm[:3, 3].reshape((3, 1))
+
+        P = p1[self.ast == 1]
+        objpa = np.array([self.points[int(y), int(x)] for x, y in self.p[self.ast == 1].squeeze()])
+        imgpts, jac = cv.projectPoints(objpa, R, t, self.mtx, self.dist)
+        imgpts = imgpts.squeeze()
+        P = P.squeeze()[~np.isnan(imgpts).any(axis=1)]
+        imgpts = imgpts[~np.isnan(imgpts).any(axis=1)]
+        P = P[(0 < imgpts[:, 0]) * (imgpts[:, 0] < self.w) * (0 < imgpts[:, 1]) * (imgpts[:, 1] < self.h)]
+        imgpts = imgpts[(0 < imgpts[:, 0]) * (imgpts[:, 0] < self.w) * (0 < imgpts[:, 1]) * (imgpts[:, 1] < self.h)]
+        error = ((P - imgpts) ** 2).sum(-1)
+        P = P[error < 1e6]
+        imgpts = imgpts[error < 1e6].astype(np.float32)
+        error = error[error < 1e6]
+
+        if len(imgpts):
+            cverror = cv.norm(P, imgpts, cv.NORM_L2) / len(imgpts)
+        else:
+            cverror = float('inf')
+        print(cverror)
+        self.cverrs.append(cverror)
+        self.p1 = p1
+        ge = norm(error,imgpts)
+        return ge, P
+
+
+
 
 
 def Rt_to_tran(tfm):

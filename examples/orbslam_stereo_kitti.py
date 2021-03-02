@@ -5,9 +5,19 @@ import orbslam2
 import time
 import cv2
 import numpy as np
+import fcntl
 
 
-def main(vocab_path, settings_path, sequence_path):
+def main(orb_path, device, data_path, save, sequence):
+    sequence_path = os.path.join(data_path, sequence)
+    vocab_path = os.path.join(orb_path, 'Vocabulary/ORBvoc.txt')
+    ins = int(sequence)
+    if ins < 3:
+        settings_path = os.path.join(orb_path, 'Examples/Stereo/KITTI00-02.yaml')
+    elif ins == 3:
+        settings_path = os.path.join(orb_path, 'Examples/Stereo/KITTI03.yaml')
+    else:
+        settings_path = os.path.join(orb_path, 'Examples/Stereo/KITTI04-12.yaml')
 
     left_filenames, right_filenames, timestamps = load_images(sequence_path)
     num_images = len(timestamps)
@@ -51,8 +61,16 @@ def main(vocab_path, settings_path, sequence_path):
 
         if ttrack < t:
             time.sleep(t - ttrack)
-
-    save_trajectory(slam.get_trajectory_points(), '../../results/kitti/a{}{}.txt'.format(sequence_path[-2:],time.strftime("%M:%S")))
+    i = 0
+    result_path = 'ro/c{}{}.txt'.format(sequence_path[-2:], i)
+    while True:
+        if not os.path.exists(result_path):
+            s_flag = save_trajectory(slam.get_trajectory_points(), result_path)
+            if s_flag:
+                print(result_path)
+                break
+        i += 1
+        result_path = 'ro/c{}{}.txt'.format(sequence, i)
 
     slam.shutdown()
 
@@ -82,23 +100,29 @@ def load_images(path_to_sequence):
 
 
 def save_trajectory(trajectory, filename):
-    with open(filename, 'w') as traj_file:
-        traj_file.writelines('{r00} {r01} {r02} {t0} {r10} {r11} {r12} {t1} {r20} {r21} {r22} {t2}\n'.format(
-            r00=repr(r00),
-            r01=repr(r01),
-            r02=repr(r02),
-            t0=repr(t0),
-            r10=repr(r10),
-            r11=repr(r11),
-            r12=repr(r12),
-            t1=repr(t1),
-            r20=repr(r20),
-            r21=repr(r21),
-            r22=repr(r22),
-            t2=repr(t2)
-        ) for stamp, r00, r01, r02, t0, r10, r11, r12, t1, r20, r21, r22, t2 in trajectory)
+    try:
+        with open(filename, 'w') as traj_file:
+            fcntl.flock(traj_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            traj_file.writelines('{r00} {r01} {r02} {t0} {r10} {r11} {r12} {t1} {r20} {r21} {r22} {t2}\n'.format(
+                r00=repr(r00),
+                r01=repr(r01),
+                r02=repr(r02),
+                t0=repr(t0),
+                r10=repr(r10),
+                r11=repr(r11),
+                r12=repr(r12),
+                t1=repr(t1),
+                r20=repr(r20),
+                r21=repr(r21),
+                r22=repr(r22),
+                t2=repr(t2)
+            ) for stamp, r00, r01, r02, t0, r10, r11, r12, t1, r20, r21, r22, t2 in trajectory)
+        traj_file.close()
+        return 1
+    except:
+        return 0
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4:
-        print('Usage: ./orbslam_stereo_kitti path_to_vocabulary path_to_settings path_to_sequence')
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    if len(sys.argv) != 6:
+        print('Usage: ./orbslam_stereo_kitti path_to_orb device path_to_data save sequence ')
+    main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
