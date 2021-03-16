@@ -95,6 +95,7 @@ def main(orb_path, device, data_path, save, sequence):
     print('Start processing sequence {}'.format(sequence))
     print('Images in the sequence: {0}'.format(num_images))
 
+    loadmodel = './finetune_300.tar'
     config_file = coco_path
     # "configs/caffe2/e2e_mask_rcnn_R_50_FPN_1x_caffe2.yaml"
 
@@ -109,13 +110,13 @@ def main(orb_path, device, data_path, save, sequence):
     )
 
     if save == '1':
-        path = './{}'.format(sequence)
+        path = 'mask/{}'.format(sequence)
         if os.path.exists(path):
             shutil.rmtree(path)
         os.mkdir(path)
 
     iml = cv.imread(dataset.left[0], cv.IMREAD_UNCHANGED)
-    dseg = DynaSeg(iml, coco_demo, feature_params, disp_path, config, paraml, lk_params, mtx, dist, kernel)
+    dseg = DynaSeg(iml, coco_demo, feature_params, disp_path, config, paraml, lk_params, mtx, dist, kernel,loadmodel)
     for idx in range(num_images):
         t0 = time.time()
         left_image = cv.imread(dataset.left[idx], cv.IMREAD_UNCHANGED)
@@ -139,7 +140,7 @@ def main(orb_path, device, data_path, save, sequence):
             else:
                 sptam.track(frame)
 
-            if idx % 5 == 0:
+            if idx % 3 == 0:
                 if idx:
                     c = dseg.dyn_seg_rec(frame, left_image, idx)
                 dseg.updata(left_image, right_image, idx, frame)
@@ -150,7 +151,7 @@ def main(orb_path, device, data_path, save, sequence):
                 left_mask = c.reshape(dseg.h,dseg.w,1)
                 right_mask = c.reshape(dseg.h,dseg.w,1)
                 if save == '1':
-                    cv.imwrite('./{}/{}.png'.format(sequence,idx), c*255)
+                    cv.imwrite(os.path.join(path, '{0:06}.png'.format(idx)), c * 255)
             else:
                 left_mask = np.ones((dseg.h,dseg.w,1),dtype=np.uint8)
                 right_mask = np.ones((dseg.h,dseg.w,1),dtype=np.uint8)
@@ -183,7 +184,7 @@ def main(orb_path, device, data_path, save, sequence):
             print('error in frame {}'.format(idx))
             break
     i = 0
-    result_path = 'ro/a{}{}.txt'.format(sequence, i)
+    result_path = 'ro/sd{}{}.txt'.format(sequence, i)
     while True:
         if not os.path.exists(result_path):
             s_flag = save_trajectory(slam.get_trajectory_points(), result_path)
@@ -191,7 +192,7 @@ def main(orb_path, device, data_path, save, sequence):
                 print(result_path)
                 break
         i += 1
-        result_path = 'ro/a{}{}.txt'.format(sequence, i)
+        result_path = 'ro/sd{}{}.txt'.format(sequence, i)
 
     slam.shutdown()
     sptam.stop()
@@ -232,5 +233,5 @@ def save_trajectory(trajectory, filename):
 
 if __name__ == '__main__':
     if len(sys.argv) != 6:
-        print('Usage: ./orbslam_stereo_kitti path_to_orb device path_to_data sequence')
+        print('Usage: ./orbslam_stereo_kitti path_to_orb device path_to_data save_img sequence ')
     main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])

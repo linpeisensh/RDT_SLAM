@@ -80,10 +80,15 @@ def main(orb_path, device, data_path, save, sequence):
     slam0.initialize()
 
     if save == '1':
-        path = './{}'.format(sequence)
-        if os.path.exists(path):
-            shutil.rmtree(path)
-        os.mkdir(path)
+        dpath = 'mask/{}/'.format(sequence)
+        opath = 'mask/o{}/'.format(sequence)
+        if os.path.exists(dpath):
+            shutil.rmtree(dpath)
+        os.mkdir(dpath)
+        if os.path.exists(opath):
+            save = '11'
+        else:
+            os.mkdir(opath)
 
     times_track = [0 for _ in range(num_images)]
     times = [0 for _ in range(num_images)]
@@ -133,7 +138,11 @@ def main(orb_path, device, data_path, save, sequence):
                 left_mask = c.reshape(dseg.h,dseg.w,1)
                 right_mask = c.reshape(dseg.h,dseg.w,1)
                 if save == '1':
-                    cv.imwrite('./{}/{}.png'.format(sequence,idx), c*255)
+                    cv.imwrite(os.path.join(dpath,'{0:06}.png'.format(idx)), c*255)
+                    cv.imwrite(os.path.join(opath,'{0:06}.png'.format(idx)), dseg.omasks*255)
+                elif save == '11':
+                    cv.imwrite(os.path.join(dpath,'{0:06}.png'.format(idx)), c*255)
+
 
             #
             if left_image is None:
@@ -164,7 +173,7 @@ def main(orb_path, device, data_path, save, sequence):
             print('error in frame {}'.format(idx))
             break
     i = 0
-    result_path = 'ro3/d{}{}.txt'.format(sequence,i)
+    result_path = 'r81/d{}{}.txt'.format(sequence,i)
     while True:
         if not os.path.exists(result_path):
             s_flag = save_trajectory(slam.get_trajectory_points(), result_path)
@@ -172,7 +181,7 @@ def main(orb_path, device, data_path, save, sequence):
                 print(result_path)
                 break
         i += 1
-        result_path = 'ro3/d{}{}.txt'.format(sequence, i)
+        result_path = 'r81/d{}{}.txt'.format(sequence, i)
 
     slam.shutdown()
     slam0.shutdown()
