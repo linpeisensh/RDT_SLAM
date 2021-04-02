@@ -25,7 +25,6 @@ class PDSeg():
         er[er < 128] = 0
         er[er >= 128] = 255
 
-        h, w = iml.shape[:2]
         a = self.coco.compute_prediction(iml)
         top = self.coco.select_top_predictions(a)
         masks = top.get_field("mask").numpy()
@@ -33,26 +32,27 @@ class PDSeg():
 
         c = np.ones((self.h, self.w),dtype=np.uint8)
         for i in range(len(masks)):
-            if labels[i] in {1, 2, 3, 4, 6, 8}:
+            if labels[i] in self.pot_moving_labels:
                 mask = masks[i].squeeze()
                 box = top.bbox[i]
                 x1, y1, x2, y2 = map(int, box)
-                if 2.25 * (y2 - y1) > x2 - x1:
-                    mi, ma = self.get_max_min_idx(er, self.w, min(y2+10,self.h-1))
-                    xy1, xy2 = x1, x2
-                    hw = w // 2
+                x = (x1 + x2) / 2
+                if 400 < x < 836:
+                    res = self.get_max_min_idx(er, self.w, min(y2 + 10, self.h - 1))
+                    x1, x2 = x1, x2
                 else:
-                    if x2 < 500:
-                        mi, ma = self.get_max_min_idx(er, self.h, min(x2 + 10, self.w - 1))
+                    if 2.25 * (y2 - y1) > x2 - x1:
+                        res = self.get_max_min_idx(er, self.w, min(y2 + 10, self.h - 1))
+                        x1, x2 = x1, x2
                     else:
-                        mi, ma = self.get_max_min_idx(er, self.h, min(x1 - 10,self.w-1))
-                    xy1, xy2 = y1, y2
-                    hw = h // 2
-                if (mi != hw or ma != hw):
-                    if labels[i] in {1, 2}:
-                        if abs(xy2 - mi) <= (xy2 - xy1) or abs(xy1 - ma) <= (xy2 - xy1):
+                        res = self.get_max_min_idx(er, self.h, min(x2 + 10, self.w - 1))
+                        x1, x2 = y1, y2
+                for mi, ma in res:
+                    if labels[i] in self.sides_moving_labels:
+                        if abs(x2 - mi) <= (x2 - x1) or abs(x1 - ma) <= (x2 - x1) or (
+                                x1 >= mi and x2 <= ma):
                             c[mask] = 0
-                    if xy1 >= mi and xy2 <= ma:
+                    elif x1 >= mi and x2 <= ma:
                         c[mask] = 0
         return c
 
@@ -74,156 +74,71 @@ class PDSeg():
         cc = np.repeat(c[:, :, np.newaxis], 3, axis=2)
         cc = cv.add(cc, nr)
         for i in range(len(masks)):
-            if labels[i] in {1, 2, 3, 4, 6, 8}:
+            if labels[i] in self.pot_moving_labels:
                 mask = masks[i].squeeze()
                 box = top.bbox[i]
-                x1, y1, x2, y2 = map(int, box)
-                x = (x1 + x2) / 2
-                if 400 < x < 836:
-                    res = self.get_max_min_idx(er, self.w, min(y2 + 10, self.h - 1))
-                    xy1, xy2 = x1, x2
-                    cc = cv.circle(cc, (x1, y2), 5, self.p_color, -1)
-                    cc = cv.circle(cc, (x2, y2), 5, self.p_color, -1)
-                else:
-                    if 2.25 * (y2 - y1) > x2 - x1:
-                        res = self.get_max_min_idx(er, self.w, min(y2 + 10, self.h - 1))
-                        xy1, xy2 = x1, x2
-                        cc = cv.circle(cc, (x1, y2), 5, self.p_color, -1)
-                        cc = cv.circle(cc, (x2, y2), 5, self.p_color, -1)
-                    else:
-                        res = self.get_max_min_idx(er, self.h, min(x2 + 10, self.w - 1))
-                        xy1, xy2 = y1, y2
-                        cc = cv.circle(cc, (x2, y1), 5, self.p_color, -1)
-                        cc = cv.circle(cc, (x2, y2), 5, self.p_color, -1)
+                res, x1, x2, y1, y2 = self.get_max_min_idx(er, box)
+                cc = cv.circle(cc, (x1, y2), 5, self.p_color, -1)
+                cc = cv.circle(cc, (x2, y2), 5, self.p_color, -1)
                 print(y2,res)
                 for mi, ma in res:
-                    if labels[i] in {1, 2}:
-                        if abs(xy2 - mi) <= (xy2 - xy1) or abs(xy1 - ma) <= (xy2 - xy1) or (
-                                xy1 >= mi and xy2 <= ma):
+                    if labels[i] in self.sides_moving_labels:
+                        if abs(x2 - mi) <= (x2 - x1) or abs(x1 - ma) <= (x2 - x1) or (
+                                x1 >= mi and x2 <= ma):
                             cc[mask, ...] = 255
-                    elif xy1 >= mi and xy2 <= ma:
+                    elif (x1 >= mi and x2 <= ma and self.w - 90 >= x2 and x1 >= 90):
                         cc[mask, ...] = 255
         return cc
 
-    def get_max_min_idx(self, er, cr, xy):
-        res = []
-        l = 0
-        r = 1
-        f = (cr == self.w)
-        while r < cr:
-            if f:
-                while l < cr and er[xy, l] == 0:
+    def get_max_min_idx(self, er, box):
+        x1, y1, x2, y2 = map(int, box)
+        def helper(y2,f):
+            res = []
+            l = 0
+            r = 1
+            if self.h - y2 > 15:
+                if f:
+                    y = y2 + 10
+                else:
+                    y = y2 + 3
+            else:
+                y = y2
+            while r < self.w:
+                while l < self.w and er[y, l] == 0:
                     l += 1
                 lr = r
                 r =  l + 1
-                while r < cr and er[xy, r] == 255:
+                while r < self.w and er[y, r] == 255:
                     r += 1
-                if r <  cr and er[xy, r-1] == 255 and res and l - lr < cr / 4:
+                if r <  self.w and er[y, r-1] == 255 and res and l - lr < max(1.05 * (x2 - x1),self.w/4):
                     l, _ = res.pop()
+                if r - l > 2:
+                    res.append([l, r - 1])
+                l = r
+            return res
+        ans = helper(y2,0)
+        if ans:
+            x = (x1 + x2) / 2
+            dis = float('inf')
+            nm = -1
+            for l, r in ans:
+                m = (l + r) / 2
+                cd = abs(m - x)
+                if cd < dis:
+                    dis = cd
+                    nm = m
+            if x1 < nm:
+                res = helper(y2,1)
             else:
-                while l < cr and er[l,xy] == 0:
-                    l += 1
-                lr = r
-                r = l + 1
-                while r < cr and er[r,xy] == 255:
-                    r += 1
-                if r <  cr and er[r-1,xy] == 255 and res and l - lr < cr / 4:
-                    l, _ = res.pop()
-            if r - l > 2:
-                res.append([l, r - 1])
-            l = r
-        return res
-
-    # def pd_seg_t(self, iml, prob_map):
-    #     er = prob_map[..., 0].copy()
-    #     er[er < 244] = 0
-    #     er[er >= 244] = 255
-    #
-    #     nr = prob_map.copy()
-    #     nr[prob_map[..., 0] > 244] = [0, 255, 0]
-    #     nr[prob_map[..., 0] <= 244] = [0, 0, 0]
-    #
-    #     a = self.coco.compute_prediction(iml)
-    #     top = self.coco.select_top_predictions(a)
-    #     masks = top.get_field("mask").numpy()
-    #     labels = top.get_field("labels").numpy()
-    #
-    #     c = np.zeros((self.h, self.w), dtype=np.uint8)
-    #     cc = np.repeat(c[:, :, np.newaxis], 3, axis=2)
-    #     cc = cv.add(cc, nr)
-    #     for i in range(len(masks)):
-    #         if labels[i] in {1, 2, 3, 4, 6, 8}:
-    #             mask = masks[i].squeeze()
-    #             box = top.bbox[i]
-    #             x1, y1, x2, y2 = map(int, box)
-    #             # if x2 > 500:
-    #             if 2.25 * (y2 - y1) > x2 - x1:
-    #                 mi, ma = self.get_max_min_idx(er, self.w, min(y2 + 5, self.h - 1))
-    #                 xy1, xy2 = x1, x2
-    #                 cc = cv.circle(cc, (x1, y2), 5, self.p_color, -1)
-    #                 cc = cv.circle(cc, (x2, y2), 5, self.p_color, -1)
-    #                 hw = self.w // 2
-    #             else:
-    #                 if x2 < 500:
-    #                     mi, ma = self.get_max_min_idx(er, self.h, min(x2 + 5, self.w - 1))
-    #                     x = x2
-    #                 else:
-    #                     mi, ma = self.get_max_min_idx(er, self.h, min(x1 - 5, self.w - 1))
-    #                     x = x1
-    #                 xy1, xy2 = y1, y2
-    #                 cc = cv.circle(cc, (x, y1), 5, self.p_color, -1)
-    #                 cc = cv.circle(cc, (x, y2), 5, self.p_color, -1)
-    #                 hw = self.h // 2
-    #             # else:
-    #             #     mi, ma = self.get_max_min_idx(er, self.w, y2)
-    #             #     xy1, xy2 = x1, x2
-    #             #     cc = cv.circle(cc, (x1, y2), 5, self.p_color, -1)
-    #             #     cc = cv.circle(cc, (x2, y2), 5, self.p_color, -1)
-    #             #     hw = self.w // 2
-    #             print(mi,ma)
-    #             if (mi != hw or ma != hw):
-    #                 if labels[i] in {1, 2}:
-    #                     if abs(xy2 - mi) <= (xy2 - xy1) or abs(xy1 - ma) <= (xy2 - xy1):
-    #                         cc[mask, ...] = 255
-    #                 if xy1 >= mi and xy2 <= ma:
-    #                     cc[mask, ...] = 255
-    #     return cc
-
-    # def get_max_min_idx(self, er, cr, xy):
-    #     fl, fr = 0, 0
-    #     l, r = 0, cr - 1
-    #     f = (cr == self.w)
-    #     while True:
-    #         if l < cr:
-    #             if f:
-    #                 if er[xy, l] == 0:
-    #                     l += 1
-    #                 else:
-    #                     fl = 1
-    #             else:
-    #                 if er[l, xy] == 0:
-    #                     l += 1
-    #                 else:
-    #                     fl = 1
-    #         if r >= 0:
-    #             if f:
-    #                 if er[xy, r] == 0:
-    #                     r -= 1
-    #                 else:
-    #                     fr = 1
-    #             else:
-    #                 if er[r, xy] == 0:
-    #                     r -= 1
-    #                 else:
-    #                     fr = 1
-    #         if l >= r or (fl and fr):
-    #             break
-    #     return l, r
+                res = helper(y2,0)
+        else:
+            res = ans
+        return res, x1, x2, y1, y2
 
     def pd_seg_rec(self,iml,prob_map,idx):
         er = prob_map[..., 0].copy()
-        er[er < 128] = 0
-        er[er >= 128] = 255
+        er[er < 244] = 0
+        er[er >= 244] = 255
 
         frame_gray = cv.cvtColor(iml, cv.COLOR_BGR2GRAY)
         nobj = len(self.obj)
@@ -245,35 +160,25 @@ class PDSeg():
         nobj = len(self.obj)
 
         for i in range(nobj):
-            box = self.obj[i][5]
-            x1, y1, x2, y2 = map(int, box)
-            x = (x1 + x2) / 2
-            if 400 < x < 836:
-                res = self.get_max_min_idx(er, self.w, min(y2 + 10, self.h - 1))
-                xy1, xy2 = x1, x2
-            else:
-                if 2.25 * (y2 - y1) > x2 - x1:
-                    res = self.get_max_min_idx(er, self.w, min(y2 + 10, self.h - 1))
-                    xy1, xy2 = x1, x2
-                else:
-                    res = self.get_max_min_idx(er, self.h, min(x2 + 10, self.w - 1))
-                    xy1, xy2 = y1, y2
-            for mi, ma in res:
-                if self.obj[i][4] in {1, 2}:
-                    if abs(xy2 - mi) <= (xy2 - xy1) or abs(xy1 - ma) <= (xy2 - xy1) or (xy1 >= mi and xy2 <= ma):
+            if self.obj[i][6]:
+                box = self.obj[i][5]
+                res, x1, x2, y1, y2 = self.get_max_min_idx(er, box)
+                for mi, ma in res:
+                    if self.obj[i][4] in self.sides_moving_labels:
+                        if abs(x2 - mi) <= (x2 - x1) or abs(x1 - ma) <= (x2 - x1) or (x1 >= mi and x2 <= ma):
+                            self.obj[i][2] += 1
+                    elif x1 >= mi and x2 <= ma:
                         self.obj[i][2] += 1
-                elif xy1 >= mi and xy2 <= ma:
-                    self.obj[i][2] += 1
         c = np.ones((self.h, self.w),dtype=np.uint8)
         res = [True] * nobj
         print('num of objs', nobj)
         for i in range(nobj):
             if idx - self.obj[i][3] != 0:
                 res[i] = False
-            elif self.obj[i][2] / self.obj[i][1] >= 0.6 or self.obj[i][2] >= 5:  #
+            elif self.obj[i][1] and self.obj[i][2] / self.obj[i][1] >= 0.6:  #  or self.obj[i][2] >= 5
                 c[self.obj[i][0]] = 0
-            else:
-                self.obj[i][2] = max(0, self.obj[i][2] - 0.5)
+            # else:
+            #     self.obj[i][2] = max(0, self.obj[i][2] - 0.5)
         self.obj = np.array(self.obj, dtype=object)
         self.obj = self.obj[res]
         for obj in self.obj:
@@ -312,7 +217,11 @@ class PDSeg():
             if nu_obj[x[1]] and nu_mask[x[2]]:
                 if x[0] > 0 and x[3] == self.obj[x[1]][4]:
                     self.obj[x[1]][0] = masks[x[2]][0].astype(np.bool)
-                    self.obj[x[1]][1] += 1
+                    if x[4][0] >= 90 and x[4][2] <= self.w - 90 and x[4][3] >= 213:
+                        self.obj[x[1]][1] += 1
+                        self.obj[x[1]][6] = True
+                    else:
+                        self.obj[x[1]][6] = False
                     self.obj[x[1]][3] = idx
                     self.obj[x[1]][5] = x[4]
                     nu_obj[x[1]] = False
@@ -321,7 +230,10 @@ class PDSeg():
                     break
         for i in range(nm):
             if nu_mask[i]:
-                self.obj.append([masks[i][0].astype(np.bool), 1, 0, idx, masks[i][1],masks[i][2]]) # mask, appear, dyn, idx, label, box
+                if masks[i][2][0] >= 90 and masks[i][2][2] <= self.w - 90 and masks[i][2][3] >= 213:
+                    self.obj.append([masks[i][0].astype(np.bool), 1, 0, idx, masks[i][1],masks[i][2], True]) # mask, appear, dyn, idx, label, box, in region
+                else:
+                    self.obj.append([masks[i][0].astype(np.bool), 0, 0, idx, masks[i][1], masks[i][2], False])
         # self.track_rate(idx)
         return
 
