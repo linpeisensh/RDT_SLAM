@@ -2,7 +2,7 @@
 
 RDR_SLAM is a visual SLAM system that is robust in dynamic scenarios for stereo configurations. Having a static map of the scene allows inpainting the frame background that has been occluded by such dynamic objects.
 
-<img src="imgs/teaser.png" width="900px"/>
+<img src="s07_000637.png" width="900px"/>
 
 RDR_SLAM: Semantic Segmentaton of Moving Objects   
 
