@@ -59,7 +59,7 @@ def save_trajectory(trajectory, filename):
     except:
         return 0
 
-def main(orb_path, device, data_path, save, sequence):
+def main(orb_path, data_path, device, save, sequence):
     sequence_path = os.path.join(data_path, sequence)
     vocab_path = os.path.join(orb_path, 'Vocabulary/ORBvoc.txt')
     file_path = os.path.join(sequence_path, 'image_2')
@@ -150,5 +150,5 @@ def main(orb_path, device, data_path, save, sequence):
 
 if __name__ == '__main__':
     if len(sys.argv) != 6:
-        print('Usage: ./orbslam_stereo_kitti path_to_orb device path_to_data save_img sequence ')
+        print('Usage: ./orbslam_stereo_kitti path_to_orb path_to_data device save_img sequence ')
     main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
