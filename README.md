@@ -26,12 +26,13 @@ make install
 - Download the dataset (color images) from http://www.cvlibs.net/datasets/kitti/eval_odometry.php 
 
 - Execute the following command. Change `PATH_TO_ORB`to ORB_SLAM2 folder. Change `PATH_TO_SEQUENCES` to the uncompressed dataset folder. Change `DEVICE` to cpu or cuda. Change `SAVE` to 0 (not save) or 1. Change `SEQUENCE` to 00, 01, 02,.., 11. 
+(Edit `depth_path`, `prob_path`, `config_file` in RDR.py)
 ```
 python RDR.py (PATH_TO_ORB) (PATH_TO_SEQUENCES) (DEVICE) (SAVE) (SEQUENCE) 
 ```
 example:
 ```
-python RDR.py (PATH_TO_ORB)/usr/stud/linp/storage/user/linp/ORB_SLAM2 cuda /storage/remote/atcremers17/linp/dataset/kittic/sequences/ 0 10(PATH_TO_MASKS)
+python RDR.py (PATH_TO_ORB)/usr/stud/linp/storage/user/linp/ORB_SLAM2 cuda /storage/remote/atcremers17/linp/dataset/kittic/sequences/ 0 10
 ```
 
 ## Citation
