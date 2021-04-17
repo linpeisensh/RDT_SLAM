@@ -1,7 +1,7 @@
 from maskrcnn_benchmark.config import cfg
 from demo.predictor import COCODemo
 
-from RDRSeg import RDRSeg
+from RDTSeg import RDTSeg
 from sptam.msptam import stereoCamera
 
 import orbslam2
@@ -90,7 +90,7 @@ def main(orb_path, data_path, device, save, sequence):
     config = stereoCamera(sequence)
     num_images = len(left_filenames)
 
-    rdrseg = RDRSeg(iml, coco_demo, depth_path, kernel, config)
+    rdtseg = RDTSeg(iml, coco_demo, depth_path, kernel, config)
 
     ins = int(sequence)
     if ins < 3:
@@ -121,14 +121,14 @@ def main(orb_path, data_path, device, save, sequence):
         prob_image = cv.imread(prob_filenames[idx])
         timestamp = timestamps[idx]
 
-        left_mask = np.ones((rdrseg.h, rdrseg.w, 1), dtype=np.uint8)
-        right_mask = np.ones((rdrseg.h, rdrseg.w, 1), dtype=np.uint8)
+        left_mask = np.ones((rdtseg.h, rdtseg.w, 1), dtype=np.uint8)
+        right_mask = np.ones((rdtseg.h, rdtseg.w, 1), dtype=np.uint8)
         slam0.process_image_stereo(left_image[:, :, ::-1], right_image[:, :, ::-1], left_mask, right_mask, timestamp)
         trans = pose_to_transformation(slam0.get_trajectory_points()[-1])
         if idx % 3 == 0:
             if idx:
-                rdrseg.update(left_image, right_image, idx, trans)
-        c = rdrseg.rdr_seg_rec(left_image, prob_image, idx,trans)
+                rdtseg.update(left_image, right_image, idx, trans)
+        c = rdtseg.rdr_seg_rec(left_image, prob_image, idx,trans)
         if save == '1':
             cv.imwrite(os.path.join(dpath, '{0:06}.png'.format(idx)), c)
         slam.process_image_stereo(left_image[:, :, ::-1], right_image[:, :, ::-1], left_mask, right_mask, timestamp)

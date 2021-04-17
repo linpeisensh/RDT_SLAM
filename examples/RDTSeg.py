@@ -4,7 +4,7 @@ from copy import deepcopy as dp
 import os
 
 
-class RRSeg():
+class RTSeg():
     def __init__(self, iml, coco, depth_path, kernel,config):
         self.coco = coco
         self.depth_path = depth_path
@@ -246,9 +246,9 @@ class RRSeg():
         # self.track_rate(idx)
         return
 
-class RDRSeg(RRSeg):
+class RDTSeg(RTSeg):
     def __init__(self,iml, coco, depth_path, kernel,config):
-        super(RDRSeg, self).__init__(iml, coco, depth_path, kernel,config)
+        super(RDTSeg, self).__init__(iml, coco, depth_path, kernel,config)
         self.Q = self.getRectifyTransform()
 
     def stereoMatchSGBM(self, iml, imr):
