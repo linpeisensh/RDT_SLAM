@@ -40,7 +40,7 @@ python RDT.py /usr/stud/linp/storage/user/linp/ORB_SLAM2 /storage/remote/atcreme
 If you use RDT_SLAM in an academic work, please cite:
 
     @article{lin2021RDTslam,
-      title={{RDT_SLAM}: Semantic Segmentaton of Moving Objects  },
+      title={RDT-SLAM: Semantic Segmentaton of Moving Objects  },
       author={Lin, Peisen},
       year={2021}
      }
