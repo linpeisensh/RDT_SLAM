@@ -46,5 +46,5 @@ If you use RDT_SLAM in an academic work, please cite:
      }
 
 ## Acknowledgements
-Our code builds on [DynaSLAM](https://github.com/BertaBescos/DynaSLAM). [ORB_SLAM2-PythonBindings](https://github.com/jskinn/ORB_SLAM2-PythonBindings).
+Our code builds on [DynaSLAM](https://github.com/BertaBescos/DynaSLAM), [ORB_SLAM2-PythonBindings](https://github.com/jskinn/ORB_SLAM2-PythonBindings).
 
