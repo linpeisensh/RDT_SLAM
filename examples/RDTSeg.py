@@ -51,14 +51,14 @@ class RTSeg():
         self.config = config
 
 
-    def rr_seg_t(self,iml,prob_map):
+    def rt_seg_t(self,iml,prob_map):
         er = prob_map[..., 0].copy()
         er[er < 244] = 0
         er[er >= 244] = 255
 
         nr = prob_map.copy()
-        nr[prob_map[..., 0] > 244] = [0, 255, 0]
-        nr[prob_map[..., 0] <= 244] = [0, 0, 0]
+        nr[prob_map[..., 0] >= 244] = [0, 255, 0]
+        nr[prob_map[..., 0] < 244] = [0, 0, 0]
 
         a = self.coco.compute_prediction(iml)
         top = self.coco.select_top_predictions(a)
@@ -136,7 +136,7 @@ class RTSeg():
         else:
             return max(min(xy, self.w - 1), 0)
 
-    def rr_seg_rec(self,iml,prob_map,idx):
+    def rt_seg_track(self,iml,prob_map,idx):
         er = prob_map[..., 0].copy()
         er[er < 244] = 0
         er[er >= 244] = 255
@@ -156,7 +156,6 @@ class RTSeg():
                 for x, y in zip(cm[0], cm[1]):
                     cx, cy = self.limit(x+dx,1), self.limit(y+dy,0)
                     nm[round(cx),round(cy)] = True
-                # print(self.obj[i][5])
                 self.obj[i][0] = nm
             else:
                 res[i] = False
@@ -173,7 +172,7 @@ class RTSeg():
                 self.obj[i][1] += 1
                 for mi, ma in res:
                     if self.obj[i][4] in self.sides_moving_labels:
-                        if abs(x2 - mi) <= (x2 - x1) or abs(x1 - ma) <= (x2 - x1) or (x1 >= mi and x2 <= ma):
+                        if mi <= x1 <= ma or mi <= x2 <= ma:
                             self.obj[i][2] += 1
                     elif x1 >= mi and x2 <= ma:
                         self.obj[i][2] += 1
@@ -186,11 +185,11 @@ class RTSeg():
                 x1, y1, x2, y2 = map(int, box)
                 if idx - self.obj[i][3] >= 5 or (idx - self.obj[i][3] and (np.sum(self.obj[i][0]) < self.obj[i][6] or x1 <= 15 or x2 >= self.w - 15 or y1 <= 15 or y2 >= self.h - 15)):
                     res[i] = False
-                elif self.obj[i][1] and self.obj[i][2] / self.obj[i][1] >= 0.6:  #  or self.obj[i][2] >= 5
+                elif self.obj[i][1] and self.obj[i][2] / self.obj[i][1] >= 0.6:
                     c[self.obj[i][0]] = 0
             elif idx - self.obj[i][3]:
                 res[i] = False
-            elif self.obj[i][1] and self.obj[i][2] / self.obj[i][1] >= 0.6:  #  or self.obj[i][2] >= 5
+            elif self.obj[i][1] and self.obj[i][2] / self.obj[i][1] >= 0.6:
                 c[self.obj[i][0]] = 0
 
             # else:
@@ -321,7 +320,7 @@ class RDTSeg(RTSeg):
                                                          (self.w, self.h), R, T, alpha=0)
         return Q
 
-    def rdr_seg_rec(self,iml,prob_map,idx,trans):
+    def rdt_seg_track(self,iml,prob_map,idx,trans):
         er = prob_map[..., 0].copy()
         er[er < 244] = 0
         er[er >= 244] = 255
